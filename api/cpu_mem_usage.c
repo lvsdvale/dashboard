@@ -1,88 +1,150 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <json-c/json.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/resource.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <string.h>
+#include <sys/time.h>
+#include <json-c/json.h>
 
-#define CPU_USAGE_INTERVAL 5
+#define BUF_SIZE 1024
 
-int main() {
-    int i;
-    char line[1024];
-    FILE *fp;
-    float cpu_usage, prev_cpu_usage = 0.0;
-    float mem_usage;
+// Estrutura para armazenar as informações de memória do sistema
+typedef struct {
+    unsigned long long total_ram;
+    unsigned long long free_ram;
+    unsigned long long total_swap;
+    unsigned long long free_swap;
+    double ram_usage_percentage;
+    double swap_usage_percentage;
+} SystemMemoryInfo;
 
-    json_object *jobj = json_object_new_object();
+// Estrutura para armazenar as informações de memória de um processo
+typedef struct {
+    pid_t pid;
+    unsigned long long total_memory;
+    unsigned long long code_memory;
+    unsigned long long heap_memory;
+    unsigned long long stack_memory;
+    unsigned long long total_pages;
+    unsigned long long code_pages;
+    unsigned long long heap_pages;
+    unsigned long long stack_pages;
+} ProcessMemoryInfo;
 
-    while (1) {
-        // Lê o arquivo /proc/stat para obter informações sobre o uso de CPU
-        fp = fopen("/proc/stat", "r");
-        if (fp == NULL) {
-            perror("Erro ao abrir /proc/stat");
-            exit(1);
-        }
-
-        while (fgets(line, 1024, fp)!= NULL) {
-            if (strncmp(line, "cpu ", 4) == 0) {
-                int user, nice, system, idle;
-                sscanf(line, "cpu %d %d %d %d", &user, &nice, &system, &idle);
-                cpu_usage = (user + nice + system) * 100.0 / (user + nice + system + idle);
-                break;
+// Função para obter as informações de memória do sistema
+void get_system_memory_info(SystemMemoryInfo *sys_mem_info) {
+    FILE *fp = fopen("/proc/meminfo", "r");
+    if (fp!= NULL) {
+        char line[BUF_SIZE];
+        while (fgets(line, sizeof(line), fp)!= NULL) {
+            if (strstr(line, "MemTotal:")!= NULL) {
+                sscanf(line, "MemTotal: %llu kB", &sys_mem_info->total_ram);
+            } else if (strstr(line, "MemFree:")!= NULL) {
+                sscanf(line, "MemFree: %llu kB", &sys_mem_info->free_ram);
+            } else if (strstr(line, "SwapTotal:")!= NULL) {
+                sscanf(line, "SwapTotal: %llu kB", &sys_mem_info->total_swap);
+            } else if (strstr(line, "SwapFree:")!= NULL) {
+                sscanf(line, "SwapFree: %llu kB", &sys_mem_info->free_swap);
             }
         }
-
         fclose(fp);
-
-        // Calcula a variação do uso de CPU
-        cpu_usage = (cpu_usage - prev_cpu_usage) / CPU_USAGE_INTERVAL;
-        prev_cpu_usage = cpu_usage;
-
-        // Lê o arquivo /proc/meminfo para obter informações sobre o uso de memória
-        fp = fopen("/proc/meminfo", "r");
-        if (fp == NULL) {
-            perror("Erro ao abrir /proc/meminfo");
-            exit(1);
-        }
-
-        int total_memory, free_memory;
-        while (fgets(line, 1024, fp)!= NULL) {
-            if (strncmp(line, "MemTotal:", 9) == 0) {
-                sscanf(line, "MemTotal: %d kB", &total_memory);
-            } else if (strncmp(line, "MemFree:", 8) == 0) {
-                sscanf(line, "MemFree: %d kB", &free_memory);
-            }
-        }
-
-        fclose(fp);
-
-        // Calcula o uso de memória
-        mem_usage = (total_memory - free_memory) * 100.0 / total_memory;
-
-        // Adiciona os dados ao objeto JSON
-        json_object *jcpu = json_object_new_double(cpu_usage);
-        json_object *jmem = json_object_new_double(mem_usage);
-        json_object_object_add(jobj, "cpu_usage", jcpu);
-        json_object_object_add(jobj, "mem_usage", jmem);
-
-        // Salva o objeto JSON em um arquivo
-        FILE *fp_json = fopen("cpu_mem.json", "w");
-        if (fp_json == NULL) {
-            perror("Erro ao abrir data.json");
-            exit(1);
-        }
-        fprintf(fp_json, "%s", json_object_to_json_string(jobj));
-        fclose(fp_json);
-
-        // Imprime os resultados
-        printf("CPU usage: %.2f%%\n", cpu_usage);
-        printf("Memory usage: %.2f%%\n", mem_usage);
-
-        // Aguarda 5 segundos
-        sleep(CPU_USAGE_INTERVAL);
     }
 
-    json_object_put(jobj);
+    sys_mem_info->ram_usage_percentage = (double)(sys_mem_info->total_ram - sys_mem_info->free_ram) / sys_mem_info->total_ram * 100.0;
+    sys_mem_info->swap_usage_percentage = (double)(sys_mem_info->total_swap - sys_mem_info->free_swap) / sys_mem_info->total_swap * 100.0;
+}
+
+// Função para obter as informações de memória de um processo
+void get_process_memory_info(pid_t pid, ProcessMemoryInfo *proc_mem_info) {
+    char path[256];
+    sprintf(path, "/proc/%d/status", pid);
+    FILE *fp = fopen(path, "r");
+    if (fp!= NULL) {
+        char line[BUF_SIZE];
+        while (fgets(line, sizeof(line), fp)!= NULL) {
+            if (strstr(line, "VmSize:")!= NULL) {
+                sscanf(line, "VmSize: %llu kB", &proc_mem_info->total_memory);
+            } else if (strstr(line, "VmExe:")!= NULL) {
+                sscanf(line, "VmExe: %llu kB", &proc_mem_info->code_memory);
+            } else if (strstr(line, "VmData:")!= NULL) {
+                sscanf(line, "VmData: %llu kB", &proc_mem_info->heap_memory);
+            } else if (strstr(line, "VmStk:")!= NULL) {
+                sscanf(line, "VmStk: %llu kB", &proc_mem_info->stack_memory);
+            }
+        }
+        fclose(fp);
+    }
+
+    sprintf(path, "/proc/%d/smaps", pid);
+    fp = fopen(path, "r");
+    if (fp!= NULL) {
+        char line[BUF_SIZE];
+        while (fgets(line, sizeof(line), fp)!= NULL) {
+            if (strstr(line, "Size:")!= NULL) {
+                sscanf(line, "Size: %llu kB", &proc_mem_info->total_pages);
+            } else if (strstr(line, "KernelPageSize:")!= NULL) {
+                sscanf(line, "KernelPageSize: %llu", &proc_mem_info->code_pages);
+            } else if (strstr(line, "MMUPageSize:")!= NULL) {
+                sscanf(line, "MMUPageSize: %llu", &proc_mem_info->heap_pages);
+            } else if (strstr(line, "AnonHugePages:")!= NULL) {
+                sscanf(line, "AnonHugePages: %llu", &proc_mem_info->stack_pages);
+            }
+        }
+        fclose(fp);
+    }
+}
+
+int main() {
+    SystemMemoryInfo sys_mem_info;
+    get_system_memory_info(&sys_mem_info);
+
+    printf("System Memory Info:\n");
+    printf("  Total RAM: %llu kB\n", sys_mem_info.total_ram);
+    printf("  Free RAM: %llu kB\n", sys_mem_info.free_ram);
+    printf("  RAM Usage Percentage: %.2f%%\n", sys_mem_info.ram_usage_percentage);
+    printf("  Total Swap: %llu kB\n", sys_mem_info.total_swap);
+    printf("  Free Swap: %llu kB\n", sys_mem_info.free_swap);
+    printf("  Swap Usage Percentage: %.2f%%\n", sys_mem_info.swap_usage_percentage);
+
+    DIR *dir = opendir("/proc");
+    if (dir!= NULL) {
+        struct dirent *entry;
+        json_object *jobj = json_object_new_array();
+        while ((entry = readdir(dir))!= NULL) {
+            if (atoi(entry->d_name)!= 0) {
+                pid_t pid = atoi(entry->d_name);
+                ProcessMemoryInfo proc_mem_info;
+                get_process_memory_info(pid, &proc_mem_info);
+
+                json_object *jproc = json_object_new_object();
+                json_object_object_add(jproc, "pid", json_object_new_int(pid));
+                json_object_object_add(jproc, "total_memory", json_object_new_uint64(proc_mem_info.total_memory));
+                json_object_object_add(jproc, "code_memory", json_object_new_uint64(proc_mem_info.code_memory));
+                json_object_object_add(jproc, "heap_memory", json_object_new_uint64(proc_mem_info.heap_memory));
+                json_object_object_add(jproc, "stack_memory", json_object_new_uint64(proc_mem_info.stack_memory));
+                json_object_object_add(jproc, "total_pages", json_object_new_uint64(proc_mem_info.total_pages));
+                json_object_object_add(jproc, "code_pages", json_object_new_uint64(proc_mem_info.code_pages));
+                json_object_object_add(jproc, "heap_pages", json_object_new_uint64(proc_mem_info.heap_pages));
+                json_object_object_add(jproc, "stack_pages", json_object_new_uint64(proc_mem_info.stack_pages));
+
+                json_object_array_add(jobj, jproc);
+            }
+        }
+
+        closedir(dir);
+
+        FILE *fp_json = fopen("memory.json", "w");
+        if (fp_json!= NULL) {
+            fprintf(fp_json, "%s", json_object_to_json_string(jobj));
+            fclose(fp_json);
+        }
+
+        json_object_put(jobj);
+    }
 
     return 0;
 }
