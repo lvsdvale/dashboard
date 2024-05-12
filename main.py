@@ -1,8 +1,8 @@
 import tkinter as tk
 import tkinter.ttk as ttk
 import json
-import time
 import threading
+import time
 
 class TarefaProcesso:
     def __init__(self, nome, pid, ppid, memoria, cpu, leitura, escrita):
@@ -86,7 +86,9 @@ class GerenciadorTarefas:
         self.tabela_global.heading("#5", text="Porcentagem de Swap utilizado")
         self.tabela_global.pack(expand=True, fill=tk.BOTH, side="top")
 
-        self.atualizar_tarefas_automaticamente()
+        self.atualizar_dados_thread = threading.Thread(target=self.atualizar_dados)
+        self.atualizar_dados_thread.daemon = True
+        self.atualizar_dados_thread.start()
 
         self.window.mainloop()
 
@@ -98,6 +100,25 @@ class GerenciadorTarefas:
 
     def limpar_tabela_global(self):
         self.tabela_global.delete(*self.tabela_global.get_children())
+
+    def inserir_tarefa_processo(self, tarefa):
+        valores = (tarefa.nome, tarefa.pid, tarefa.ppid, tarefa.memoria, tarefa.cpu, tarefa.leitura, tarefa.escrita)
+        self.tabela_processos.insert("", tk.END, values=valores)
+    
+    def inserir_tarefa_memoria(self, tarefa):
+        valores = (tarefa.nome, tarefa.pid, tarefa.total_memory, tarefa.code_memory, tarefa.heap_memory, tarefa.stack_memory, tarefa.total_pages, tarefa.code_pages, tarefa.heap_pages, tarefa.stack_pages)
+        self.tabela_memoria.insert("", tk.END, values=valores)
+
+    def inserir_tarefa_global(self, tarefa):
+        valores = (tarefa.total_ram, tarefa.free_ram, tarefa.ram_usage_percentage, tarefa.total_swap, tarefa.free_swap, tarefa.swap_usage_percentage)
+        self.tabela_global.insert("", tk.END, values=valores)
+
+    def atualizar_dados(self):
+        while True:
+            self.atualizar_tarefas_processos()
+            self.atualizar_tarefas_memoria()
+            self.atualizar_tarefas_global()
+            time.sleep(3)
 
     def atualizar_tarefas_processos(self):
         with open("processes.json", "r") as arquivo:
@@ -119,10 +140,11 @@ class GerenciadorTarefas:
         self.limpar_tabela_processos()
         for tarefa in tarefas_processos:
             self.inserir_tarefa_processo(tarefa)
-
+    
     def atualizar_tarefas_memoria(self):
         with open("processes_memory.json", "r") as arquivo:
             dados = json.load(arquivo)
+
         tarefas_memoria = []
         for tarefa in dados:
             nome = tarefa["name"]
@@ -159,24 +181,6 @@ class GerenciadorTarefas:
         self.limpar_tabela_global()
         for tarefa in tarefas_global:
             self.inserir_tarefa_global(tarefa)
-
-    def inserir_tarefa_processo(self, tarefa):
-        valores = (tarefa.nome, tarefa.pid, tarefa.ppid, tarefa.memoria, tarefa.cpu, tarefa.leitura, tarefa.escrita)
-        self.tabela_processos.insert("", tk.END, values=valores)
-    
-    def inserir_tarefa_memoria(self, tarefa):
-        valores = (tarefa.nome, tarefa.pid, tarefa.total_memory, tarefa.code_memory, tarefa.heap_memory, tarefa.stack_memory, tarefa.total_pages, tarefa.code_pages, tarefa.heap_pages, tarefa.stack_pages)
-        self.tabela_memoria.insert("", tk.END, values=valores)
-
-    def inserir_tarefa_global(self, tarefa):
-        valores = (tarefa.total_ram, tarefa.free_ram, tarefa.ram_usage_percentage, tarefa.total_swap, tarefa.free_swap, tarefa.swap_usage_percentage)
-        self.tabela_global.insert("", tk.END, values=valores)
-
-    def atualizar_tarefas_automaticamente(self):
-        self.atualizar_tarefas_processos()
-        self.atualizar_tarefas_memoria()
-        self.atualizar_tarefas_global()
-        self.window.after(3000, self.atualizar_tarefas_automaticamente)
 
 if __name__ == "__main__":
     app = GerenciadorTarefas()
