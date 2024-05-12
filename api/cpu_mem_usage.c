@@ -26,6 +26,7 @@ typedef struct {
 // Estrutura para armazenar as informações de memória de um processo
 typedef struct {
     pid_t pid;
+    char name[256]; // Nome do processo
     unsigned long long total_memory;
     unsigned long long code_memory;
     unsigned long long heap_memory;
@@ -80,6 +81,14 @@ void get_process_memory_info(pid_t pid, ProcessMemoryInfo *proc_mem_info) {
         fclose(fp);
     }
 
+    // Obtém o nome do processo
+    sprintf(path, "/proc/%d/comm", pid);
+    fp = fopen(path, "r");
+    if (fp != NULL) {
+        fgets(proc_mem_info->name, sizeof(proc_mem_info->name), fp);
+        fclose(fp);
+    }
+
     sprintf(path, "/proc/%d/smaps", pid);
     fp = fopen(path, "r");
     if (fp != NULL) {
@@ -115,6 +124,7 @@ json_object* create_system_memory_json(const SystemMemoryInfo *sys_mem_info) {
 json_object* create_process_memory_json(const ProcessMemoryInfo *proc_mem_info) {
     json_object *jobj = json_object_new_object();
     json_object_object_add(jobj, "pid", json_object_new_int(proc_mem_info->pid));
+    json_object_object_add(jobj, "name", json_object_new_string(proc_mem_info->name));
     json_object_object_add(jobj, "total_memory", json_object_new_uint64(proc_mem_info->total_memory));
     json_object_object_add(jobj, "code_memory", json_object_new_uint64(proc_mem_info->code_memory));
     json_object_object_add(jobj, "heap_memory", json_object_new_uint64(proc_mem_info->heap_memory));

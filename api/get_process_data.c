@@ -23,10 +23,10 @@ void get_io_info(int pid, IOInfo *io_info) {
     char io_path[256];
     sprintf(io_path, "/proc/%d/io", pid);
     int fd = open(io_path, O_RDONLY);
-    if (fd!= -1) {
+    if (fd != -1) {
         char buf[BUF_SIZE];
         ssize_t bytes_read = read(fd, buf, BUF_SIZE);
-        if (bytes_read!= -1) {
+        if (bytes_read != -1) {
             buf[bytes_read] = '\0';
             char *pos = strstr(buf, "read_bytes:");
             if (pos) {
@@ -49,9 +49,9 @@ long long timeval_diff(struct timeval *start, struct timeval *end) {
 // Função para obter as estatísticas de E/S do sistema de arquivos
 void get_disk_io_counters(unsigned long long *read_bytes, unsigned long long *write_bytes) {
     FILE *fp = fopen("/proc/diskstats", "r");
-    if (fp!= NULL) {
+    if (fp != NULL) {
         char line[BUF_SIZE];
-        while (fgets(line, sizeof(line), fp)!= NULL) {
+        while (fgets(line, sizeof(line), fp) != NULL) {
             char dev_name[64];
             unsigned long long rd, wr;
             int major, minor;
@@ -62,6 +62,19 @@ void get_disk_io_counters(unsigned long long *read_bytes, unsigned long long *wr
             }
         }
         fclose(fp);
+    }
+}
+
+// Função para obter o nome do processo
+void get_process_name(int pid, char *name) {
+    char comm_path[256];
+    sprintf(comm_path, "/proc/%d/comm", pid);
+    FILE *fp = fopen(comm_path, "r");
+    if (fp != NULL) {
+        fgets(name, BUF_SIZE, fp);
+        fclose(fp);
+        // Remover o caractere de nova linha, se existir
+        strtok(name, "\n");
     }
 }
 
@@ -91,13 +104,13 @@ int main() {
 
         // Abrir o diretório /proc
         DIR *dir = opendir("/proc");
-        if (dir!= NULL) {
+        if (dir != NULL) {
             // Loop através de cada entrada no diretório /proc
             struct dirent *entry;
             json_object *jobj = json_object_new_array();
-            while ((entry = readdir(dir))!= NULL) {
+            while ((entry = readdir(dir)) != NULL) {
                 // Verificar se o nome da entrada é um número (um PID)
-                if (atoi(entry->d_name)!= 0) {
+                if (atoi(entry->d_name) != 0) {
                     // Obter o PID
                     pid = atoi(entry->d_name);
 
@@ -122,9 +135,14 @@ int main() {
                                        (double)(usage.ru_utime.tv_usec + usage.ru_stime.tv_usec) / 1000.0;
                     cpu_usage /= elapsed_time;
 
+                    // Obter o nome do processo
+                    char process_name[BUF_SIZE];
+                    get_process_name(pid, process_name);
+
                     // Criar um objeto JSON para o processo
                     json_object *jproc = json_object_new_object();
                     json_object_object_add(jproc, "pid", json_object_new_int(pid));
+                    json_object_object_add(jproc, "name", json_object_new_string(process_name));
                     json_object_object_add(jproc, "ppid", json_object_new_int(ppid));
                     json_object_object_add(jproc, "mem_usage_mb", json_object_new_int(mem_usage_mb));
                     json_object_object_add(jproc, "cpu_usage", json_object_new_double(cpu_usage));
@@ -141,7 +159,7 @@ int main() {
 
             // Salvar o objeto JSON em um arquivo
             FILE *fp_json = fopen("processes.json", "w");
-            if (fp_json!= NULL) {
+            if (fp_json != NULL) {
                 fprintf(fp_json, "%s", json_object_to_json_string(jobj));
                 fclose(fp_json);
             }
