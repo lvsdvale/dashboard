@@ -52,7 +52,7 @@ class GerenciadorTarefas:
         self.notebook.add(self.tab_memoria, text="Memória")
         self.notebook.add(self.tab_global, text="Global")
 
-        self.tabela_processos = ttk.Treeview(self.tab_processos, columns=("Nome","PID", "PPID", "Memória", "CPU", "Leitura", "Escrita"))
+        self.tabela_processos = ttk.Treeview(self.tab_processos, columns=("PID", "PPID", "Memória", "CPU", "Leitura", "Escrita"))
         self.tabela_processos.heading("#0", text="Nome")
         self.tabela_processos.heading("#1", text="PID")
         self.tabela_processos.heading("#2", text="PPID")
@@ -62,7 +62,7 @@ class GerenciadorTarefas:
         self.tabela_processos.heading("#6", text="Escrita")
         self.tabela_processos.pack(expand=True, fill=tk.BOTH, side="top")
         
-        self.tabela_memoria = ttk.Treeview(self.tab_memoria, columns=("Nome", "PID", "Memoria Total", "Memoria Codigo", "Memoria Heap", "Memoria Stack",
+        self.tabela_memoria = ttk.Treeview(self.tab_memoria, columns=("PID", "Memoria Total", "Memoria Codigo", "Memoria Heap", "Memoria Stack",
                                                                  "Total de Paginas", "Paginas Codigos", "Paginas Heap", "Paginas Stack"))
         self.tabela_memoria.heading("#0", text="Nome")
         self.tabela_memoria.heading("#1", text="PID")
@@ -76,7 +76,7 @@ class GerenciadorTarefas:
         self.tabela_memoria.heading("#9", text="Paginas Stack")
         self.tabela_memoria.pack(expand=True, fill=tk.BOTH, side="top")
         
-        self.tabela_global = ttk.Treeview(self.tab_global, columns=("RAM Total", "RAM Livre", "Porcentagem de RAM utilizada", "Swap Total", 
+        self.tabela_global = ttk.Treeview(self.tab_global, columns=("RAM Livre", "Porcentagem de RAM utilizada", "Swap Total", 
                                                                 "Swap Livre", "Porcentagem de Swap utilizado"))
         self.tabela_global.heading("#0", text="RAM Total")
         self.tabela_global.heading("#1", text="RAM Livre")
@@ -102,15 +102,15 @@ class GerenciadorTarefas:
         self.tabela_global.delete(*self.tabela_global.get_children())
 
     def inserir_tarefa_processo(self, tarefa):
-        valores = (tarefa.nome, tarefa.pid, tarefa.ppid, tarefa.memoria, tarefa.cpu, tarefa.leitura, tarefa.escrita)
-        self.tabela_processos.insert("", tk.END, values=valores)
+        valores = (tarefa.pid, tarefa.ppid, tarefa.memoria, tarefa.cpu, tarefa.leitura, tarefa.escrita)
+        self.tabela_processos.insert("", tk.END, text=tarefa.nome, values=valores)
     
     def inserir_tarefa_memoria(self, tarefa):
-        valores = (tarefa.nome, tarefa.pid, tarefa.total_memory, tarefa.code_memory, tarefa.heap_memory, tarefa.stack_memory, tarefa.total_pages, tarefa.code_pages, tarefa.heap_pages, tarefa.stack_pages)
-        self.tabela_memoria.insert("", tk.END, values=valores)
+        valores = (tarefa.pid, tarefa.total_memory, tarefa.code_memory, tarefa.heap_memory, tarefa.stack_memory, tarefa.total_pages, tarefa.code_pages, tarefa.heap_pages, tarefa.stack_pages)
+        self.tabela_memoria.insert("", tk.END, text=tarefa.nome, values=valores)
 
     def inserir_tarefa_global(self, tarefa):
-        valores = (tarefa.total_ram, tarefa.free_ram, tarefa.ram_usage_percentage, tarefa.total_swap, tarefa.free_swap, tarefa.swap_usage_percentage)
+        valores = (tarefa.free_ram, tarefa.ram_usage_percentage, tarefa.total_swap, tarefa.free_swap, tarefa.swap_usage_percentage)
         self.tabela_global.insert("", tk.END, values=valores)
 
     def atualizar_dados(self):

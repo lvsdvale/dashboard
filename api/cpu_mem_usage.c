@@ -26,7 +26,7 @@ typedef struct {
 // Estrutura para armazenar as informações de memória de um processo
 typedef struct {
     pid_t pid;
-    char name[256]; // Nome do processo
+    char name[256];
     unsigned long long total_memory;
     unsigned long long code_memory;
     unsigned long long heap_memory;
@@ -138,14 +138,14 @@ json_object* create_process_memory_json(const ProcessMemoryInfo *proc_mem_info) 
 
 // Função para atualizar os JSONs de dados global e de processo
 void update_json_data() {
-    // Variáveis para armazenar informações de memória do sistema e de um processo
+   
     SystemMemoryInfo sys_mem_info;
     ProcessMemoryInfo proc_mem_info;
 
     // Obtém informações de memória do sistema
     get_system_memory_info(&sys_mem_info);
 
-    // Cria o JSON para as informações de memória do sistema
+    
     json_object *jglobal = create_system_memory_json(&sys_mem_info);
 
     // Abre o diretório de processos

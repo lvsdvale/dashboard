@@ -130,10 +130,10 @@ int main() {
                     gettimeofday(&end_time, NULL);
                     elapsed_time = timeval_diff(&start_time, &end_time);
 
-                    // Calcular o uso da CPU
-                    double cpu_usage = (double)(usage.ru_utime.tv_sec + usage.ru_stime.tv_sec) * 1000.0 +
-                                       (double)(usage.ru_utime.tv_usec + usage.ru_stime.tv_usec) / 1000.0;
-                    cpu_usage /= elapsed_time;
+                    // Calcular o uso da CPU em porcentagem
+                    double cpu_usage = ((double)(usage.ru_utime.tv_sec + usage.ru_stime.tv_sec) * 1000.0 +
+                                        (double)(usage.ru_utime.tv_usec + usage.ru_stime.tv_usec) / 1000.0) /
+                                       (double)elapsed_time * 100.0;
 
                     // Obter o nome do processo
                     char process_name[BUF_SIZE];
