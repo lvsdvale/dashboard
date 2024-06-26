@@ -11,22 +11,26 @@
 #include <json-c/json.h>
 
 #define BUF_SIZE 1024
+#define INTERVAL 5  // Intervalo de tempo em segundos entre as leituras
 
-// Estrutura para armazenar as informações de E/S do processo
 typedef struct {
     unsigned long long read_bytes;
     unsigned long long write_bytes;
 } IOInfo;
 
-// Função para obter informações de E/S do processo
+typedef struct {
+    unsigned long long user_time;
+    unsigned long long system_time;
+} CPUInfo;
+
 void get_io_info(int pid, IOInfo *io_info) {
     char io_path[256];
     sprintf(io_path, "/proc/%d/io", pid);
     int fd = open(io_path, O_RDONLY);
-    if (fd != -1) {
+    if (fd!= -1) {
         char buf[BUF_SIZE];
         ssize_t bytes_read = read(fd, buf, BUF_SIZE);
-        if (bytes_read != -1) {
+        if (bytes_read!= -1) {
             buf[bytes_read] = '\0';
             char *pos = strstr(buf, "read_bytes:");
             if (pos) {
@@ -41,105 +45,127 @@ void get_io_info(int pid, IOInfo *io_info) {
     }
 }
 
-// Função para calcular a diferença de tempo em milissegundos
-long long timeval_diff(struct timeval *start, struct timeval *end) {
-    return (end->tv_sec - start->tv_sec) * 1000LL + (end->tv_usec - start->tv_usec) / 1000LL;
+void get_cpu_info(int pid, CPUInfo *cpu_info) {
+    char stat_path[256];
+    sprintf(stat_path, "/proc/%d/stat", pid);
+    FILE *fp = fopen(stat_path, "r");
+    if (fp!= NULL) {
+        long long unsigned utime, stime;
+        fscanf(fp, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %llu %llu", &utime, &stime);
+        cpu_info->user_time = utime;
+        cpu_info->system_time = stime;
+        fclose(fp);
+    }
 }
 
-// Função para obter as estatísticas de E/S do sistema de arquivos
+unsigned long long get_total_cpu_time() {
+    FILE *fp = fopen("/proc/stat", "r");
+    if (fp!= NULL) {
+        char line[BUF_SIZE];
+        unsigned long long user, nice, system, idle, iowait, irq, softirq, steal;
+        fgets(line, sizeof(line), fp);
+        sscanf(line, "cpu  %llu %llu %llu %llu %llu %llu %llu %llu", &user, &nice, &system, &idle, &iowait, &irq, &softirq, &steal);
+        fclose(fp);
+        return user + nice + system + idle + iowait + irq + softirq + steal;
+    }
+    return 0;
+}
+
 void get_disk_io_counters(unsigned long long *read_bytes, unsigned long long *write_bytes) {
     FILE *fp = fopen("/proc/diskstats", "r");
-    if (fp != NULL) {
+    if (fp!= NULL) {
         char line[BUF_SIZE];
-        while (fgets(line, sizeof(line), fp) != NULL) {
+        while (fgets(line, sizeof(line), fp)!= NULL) {
             char dev_name[64];
-            unsigned long long rd, wr;
+            unsigned long long rd_sectors, wr_sectors;
             int major, minor;
-            sscanf(line, "%d %d %s %llu %*d %*d %llu %*d %*d %*d %*d", &major, &minor, dev_name, &rd, &wr);
+            sscanf(line, "%d %d %s %*d %*d %llu %*d %*d %*d %llu", &major, &minor, dev_name, &rd_sectors, &wr_sectors);
             if (major > 0 && minor > 0) {
-                *read_bytes += rd * 512;   // Setor de 512 bytes
-                *write_bytes += wr * 512;  // Setor de 512 bytes
+                *read_bytes += rd_sectors * 512;
+                *write_bytes += wr_sectors * 512;
             }
         }
         fclose(fp);
     }
 }
 
-// Função para obter o nome do processo
 void get_process_name(int pid, char *name) {
     char comm_path[256];
     sprintf(comm_path, "/proc/%d/comm", pid);
     FILE *fp = fopen(comm_path, "r");
-    if (fp != NULL) {
+    if (fp!= NULL) {
         fgets(name, BUF_SIZE, fp);
         fclose(fp);
-        // Remover o caractere de nova linha, se existir
         strtok(name, "\n");
     }
 }
 
+int get_ppid(int pid) {
+    char stat_path[256];
+    sprintf(stat_path, "/proc/%d/stat", pid);
+    FILE *fp = fopen(stat_path, "r");
+    if (fp!= NULL) {
+        int ppid;
+        fscanf(fp, "%*d %*s %*c %d", &ppid);
+        fclose(fp);
+        return ppid;
+    }
+    return -1;
+}
+
 int main() {
-    // Variáveis para armazenar informações do processo
     pid_t pid;
     pid_t ppid;
     long mem_usage_mb;
     IOInfo io_info;
+    CPUInfo cpu_info, prev_cpu_info = {0, 0};
     struct rusage usage;
-    struct timeval start_time, end_time;
-    long long elapsed_time;
     unsigned long long total_read_bytes = 0;
     unsigned long long total_write_bytes = 0;
+    unsigned long long prev_total_cpu_time = 0, total_cpu_time;
+    double cpu_usage;
 
-    // Loop infinito para atualizar as informações a cada 5 segundos
+    prev_total_cpu_time = get_total_cpu_time();
+
     while (1) {
-        // Obter o tempo de início
-        gettimeofday(&start_time, NULL);
-
-        // Zerar as estatísticas de E/S do sistema de arquivos
         total_read_bytes = 0;
         total_write_bytes = 0;
 
-        // Obter as estatísticas de E/S do sistema de arquivos
         get_disk_io_counters(&total_read_bytes, &total_write_bytes);
 
-        // Abrir o diretório /proc
         DIR *dir = opendir("/proc");
-        if (dir != NULL) {
-            // Loop através de cada entrada no diretório /proc
+        if (dir!= NULL) {
             struct dirent *entry;
             json_object *jobj = json_object_new_array();
-            while ((entry = readdir(dir)) != NULL) {
-                // Verificar se o nome da entrada é um número (um PID)
-                if (atoi(entry->d_name) != 0) {
-                    // Obter o PID
+            while ((entry = readdir(dir))!= NULL) {
+                if (atoi(entry->d_name)!= 0) {
                     pid = atoi(entry->d_name);
+                    ppid = get_ppid(pid);
 
-                    // Obter o PID do processo pai
-                    ppid = getppid();
-
-                    // Obter o uso de recursos do processo
-                    getrusage(RUSAGE_SELF, &usage);
-
-                    // Calcular o uso de memória em MB
-                    mem_usage_mb = usage.ru_maxrss / 1024;
-
-                    // Obter informações de E/S do processo
                     get_io_info(pid, &io_info);
+                    get_cpu_info(pid, &cpu_info);
 
-                    // Calcular a diferença de tempo desde o início do processo
-                    gettimeofday(&end_time, NULL);
-                    elapsed_time = timeval_diff(&start_time, &end_time);
+                    total_cpu_time = get_total_cpu_time();
+                    double process_cpu_delta = (cpu_info.user_time + cpu_info.system_time) - (prev_cpu_info.user_time + prev_cpu_info.system_time);
+                    double total_cpu_delta = total_cpu_time - prev_total_cpu_time;
 
-                    // Calcular o uso da CPU em porcentagem
-                    double cpu_usage = ((double)(usage.ru_utime.tv_sec + usage.ru_stime.tv_sec) * 1000.0 +
-                                        (double)(usage.ru_utime.tv_usec + usage.ru_stime.tv_usec) / 1000.0) /
-                                       (double)elapsed_time * 100.0;
+                    if (total_cpu_delta > 0) {
+                        cpu_usage = (process_cpu_delta / sysconf(_SC_CLK_TCK)) / (total_cpu_delta / sysconf(_SC_CLK_TCK)) * 100.0;
+                        cpu_usage = cpu_usage / (double)sysconf(_SC_NPROCESSORS_ONLN);
+                    } else {
+                        cpu_usage = 0.0;
+                    }
 
-                    // Obter o nome do processo
+                    prev_cpu_info = cpu_info;
+                    prev_total_cpu_time = total_cpu_time;
+
+                    if (getrusage(RUSAGE_SELF, &usage) == 0) {
+                        mem_usage_mb = usage.ru_maxrss / 1024;
+                    }
+
                     char process_name[BUF_SIZE];
                     get_process_name(pid, process_name);
 
-                    // Criar um objeto JSON para o processo
                     json_object *jproc = json_object_new_object();
                     json_object_object_add(jproc, "pid", json_object_new_int(pid));
                     json_object_object_add(jproc, "name", json_object_new_string(process_name));
@@ -149,17 +175,13 @@ int main() {
                     json_object_object_add(jproc, "total_read_bytes", json_object_new_uint64(io_info.read_bytes));
                     json_object_object_add(jproc, "total_write_bytes", json_object_new_uint64(io_info.write_bytes));
 
-                    // Adicionar o objeto JSON do processo ao array
                     json_object_array_add(jobj, jproc);
                 }
             }
-
-            // Fechar o diretório /proc
             closedir(dir);
 
-            // Salvar o objeto JSON em um arquivo
             FILE *fp_json = fopen("processes.json", "w");
-            if (fp_json != NULL) {
+            if (fp_json!= NULL) {
                 fprintf(fp_json, "%s", json_object_to_json_string(jobj));
                 fclose(fp_json);
             }
@@ -167,8 +189,7 @@ int main() {
             json_object_put(jobj);
         }
 
-        // Esperar 5 segundos antes de atualizar as informações
-        sleep(5);
+        sleep(INTERVAL);
     }
 
     return 0;
