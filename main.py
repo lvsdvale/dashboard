@@ -448,6 +448,12 @@ class GerenciadorTarefas:
                 voltar_button = ttk.Button(nova_janela, text="Voltar", command=voltar)
                 voltar_button.pack(pady=10)
 
+                def voltar_para_raiz():
+                    self.chamar_get_dir_tree('/home/lvsdvale/')
+
+                raiz_button = ttk.Button(nova_janela, text="Voltar para a Raiz", command=voltar_para_raiz)
+                raiz_button.pack(pady=10)
+
                 self.tree.delete(*self.tree.get_children())
                 for child in children:
                     name = child.get("name", "Desconhecido")
