@@ -401,6 +401,7 @@ class GerenciadorTarefas:
                 dados = json.load(arquivo)
 
             path = dados.get("path", "Explorador de Arquivos")
+            self.current_path = path
             children = dados.get("children", [])
 
             if nova_janela is None:
@@ -420,23 +421,20 @@ class GerenciadorTarefas:
                 self.tree.column("#3", anchor=tk.W)
                 self.tree.pack(expand=True, fill=tk.BOTH, side=tk.LEFT)
 
-                scroll_y = ttk.Scrollbar(frame, orient=tk.VERTICAL)
+                scroll_y = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=self.tree.yview)
                 scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
-                scroll_x = ttk.Scrollbar(frame, orient=tk.HORIZONTAL)
+                scroll_x = ttk.Scrollbar(frame, orient=tk.HORIZONTAL, command=self.tree.xview)
                 scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
 
                 self.tree.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
-                scroll_y.config(command=self.tree.yview)
-                scroll_x.config(command=self.tree.xview)
 
-                def on_item_click(event, path=path):
+                def on_item_click(event):
                     item = self.tree.selection()[0]
                     item_text = self.tree.item(item, "values")
                     if item_text[2] == "directory":
-                        path = path.replace('\\', '')
-                        novo_caminho = f"{path}{item_text[0]}/"
+                        novo_caminho = f"{self.current_path}{item_text[0]}/"
                         print(novo_caminho)
-                        self.history.append(path)
+                        self.history.append(self.current_path)
                         self.current_path = novo_caminho
                         self.chamar_get_dir_tree(novo_caminho)
 
@@ -449,16 +447,22 @@ class GerenciadorTarefas:
 
                 voltar_button = ttk.Button(nova_janela, text="Voltar", command=voltar)
                 voltar_button.pack(pady=10)
+
+                self.tree.delete(*self.tree.get_children())
+                for child in children:
+                    name = child.get("name", "Desconhecido")
+                    size = child.get("size", "Desconhecido")
+                    tipo = child.get("type", "Desconhecido")
+                    self.tree.insert("", tk.END, values=(name, size, tipo))
+
             else:
                 nova_janela.title(path)
-                for item in self.tree.get_children():
-                    self.tree.delete(item)
-
-            for child in children:
-                name = child.get("name", "Desconhecido")
-                size = child.get("size", "Desconhecido")
-                tipo = child.get("type", "Desconhecido")
-                self.tree.insert("", tk.END, values=(name, size, tipo))
+                self.tree.delete(*self.tree.get_children())
+                for child in children:
+                    name = child.get("name", "Desconhecido")
+                    size = child.get("size", "Desconhecido")
+                    tipo = child.get("type", "Desconhecido")
+                    self.tree.insert("", tk.END, values=(name, size, tipo))
 
         except FileNotFoundError:
             messagebox.showerror("Erro", "O arquivo JSON não foi encontrado.")
@@ -467,18 +471,23 @@ class GerenciadorTarefas:
 
     def chamar_get_dir_tree(self, caminho):
         try:
-            resultado = subprocess.run(["sudo", "./api/get_dir_tree", caminho])
-            if resultado.returncode == -6:
+            resultado = subprocess.run(["sudo", "./api/get_dir_tree", caminho], capture_output=True, text=True)
+            if resultado.returncode == 0:
+                dados = json.loads(resultado.stdout)
+                self.exibir_diretorio("navigation.json", nova_janela=self.tree.master.master)
+            elif resultado.returncode == -6:
                 self.exibir_diretorio("navigation.json", nova_janela=self.tree.master.master)
             else:
-                messagebox.showerror("Erro", "Erro ao executar o programa get_dir_tree.")
+                messagebox.showerror("Erro", f"Erro ao executar o programa get_dir_tree. Código de retorno: {resultado.returncode}")
         except FileNotFoundError:
             messagebox.showerror("Erro", "O programa get_dir_tree não foi encontrado.")
+        except json.JSONDecodeError as e:
+            messagebox.showerror("Erro", f"Erro ao decodificar JSON retornado pelo get_dir_tree: {str(e)}")
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao executar o programa get_dir_tree: {str(e)}")
 
 
 
+
 if __name__ == "__main__":
     GerenciadorTarefas()
-
