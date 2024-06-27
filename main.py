@@ -395,64 +395,70 @@ class GerenciadorTarefas:
         self.history = []
         self.exibir_diretorio("navigation.json")
 
-    def exibir_diretorio(self, json_path):
+    def exibir_diretorio(self, json_path, nova_janela=None):
         try:
             with open(json_path, "r") as arquivo:
                 dados = json.load(arquivo)
 
             path = dados.get("path", "Explorador de Arquivos")
             children = dados.get("children", [])
-       
-            nova_janela = tk.Toplevel(self.window)
-            nova_janela.title(path)
-            nova_janela.geometry("600x400")
 
-            frame = ttk.Frame(nova_janela)
-            frame.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
+            if nova_janela is None:
+                nova_janela = tk.Toplevel(self.window)
+                nova_janela.title(path)
+                nova_janela.geometry("600x400")
 
-            tree = ttk.Treeview(frame, columns=("Nome", "Tamanho", "Tipo"), show='headings')
-            tree.heading("#1", text="Nome")
-            tree.heading("#2", text="Tamanho")
-            tree.heading("#3", text="Tipo")
-            tree.column("#1", anchor=tk.W)
-            tree.column("#2", anchor=tk.W)
-            tree.column("#3", anchor=tk.W)
-            tree.pack(expand=True, fill=tk.BOTH, side=tk.LEFT)
+                frame = ttk.Frame(nova_janela)
+                frame.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
+
+                self.tree = ttk.Treeview(frame, columns=("Nome", "Tamanho", "Tipo"), show='headings')
+                self.tree.heading("#1", text="Nome")
+                self.tree.heading("#2", text="Tamanho")
+                self.tree.heading("#3", text="Tipo")
+                self.tree.column("#1", anchor=tk.W)
+                self.tree.column("#2", anchor=tk.W)
+                self.tree.column("#3", anchor=tk.W)
+                self.tree.pack(expand=True, fill=tk.BOTH, side=tk.LEFT)
+
+                scroll_y = ttk.Scrollbar(frame, orient=tk.VERTICAL)
+                scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
+                scroll_x = ttk.Scrollbar(frame, orient=tk.HORIZONTAL)
+                scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
+
+                self.tree.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+                scroll_y.config(command=self.tree.yview)
+                scroll_x.config(command=self.tree.xview)
+
+                def on_item_click(event, path=path):
+                    item = self.tree.selection()[0]
+                    item_text = self.tree.item(item, "values")
+                    if item_text[2] == "directory":
+                        path = path.replace('\\', '')
+                        novo_caminho = f"{path}{item_text[0]}/"
+                        print(novo_caminho)
+                        self.history.append(path)
+                        self.current_path = novo_caminho
+                        self.chamar_get_dir_tree(novo_caminho)
+
+                self.tree.bind("<Double-1>", on_item_click)
+
+                def voltar():
+                    if self.history:
+                        caminho_anterior = self.history.pop()
+                        self.chamar_get_dir_tree(caminho_anterior)
+
+                voltar_button = ttk.Button(nova_janela, text="Voltar", command=voltar)
+                voltar_button.pack(pady=10)
+            else:
+                nova_janela.title(path)
+                for item in self.tree.get_children():
+                    self.tree.delete(item)
 
             for child in children:
                 name = child.get("name", "Desconhecido")
                 size = child.get("size", "Desconhecido")
                 tipo = child.get("type", "Desconhecido")
-                tree.insert("", tk.END, values=(name, size, tipo))
-
-            scroll_y = ttk.Scrollbar(frame, orient=tk.VERTICAL)
-            scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
-            scroll_x = ttk.Scrollbar(frame, orient=tk.HORIZONTAL)
-            scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
-
-            tree.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
-            scroll_y.config(command=tree.yview)
-            scroll_x.config(command=tree.xview)
-            def on_item_click(event, path=path):
-                item = tree.selection()[0]
-                item_text = tree.item(item, "values")
-                if item_text[2] == "directory":
-                    path = path.replace('\\', '')
-                    novo_caminho = f"{path}{item_text[0]}/"
-                    print(novo_caminho)
-                    self.history.append(path)
-                    self.current_path = novo_caminho
-                    self.chamar_get_dir_tree(novo_caminho)
-
-            tree.bind("<Double-1>", on_item_click)
-
-            def voltar():
-                if self.history:
-                    caminho_anterior = self.history.pop()
-                    self.exibir_diretorio(caminho_anterior)
-
-            voltar_button = ttk.Button(nova_janela, text="Voltar", command=voltar)
-            voltar_button.pack(pady=10)
+                self.tree.insert("", tk.END, values=(name, size, tipo))
 
         except FileNotFoundError:
             messagebox.showerror("Erro", "O arquivo JSON não foi encontrado.")
@@ -461,9 +467,9 @@ class GerenciadorTarefas:
 
     def chamar_get_dir_tree(self, caminho):
         try:
-            resultado = subprocess.run(["sudo","./api/get_dir_tree", caminho])
+            resultado = subprocess.run(["sudo", "./api/get_dir_tree", caminho])
             if resultado.returncode == -6:
-                self.exibir_diretorio("navigation.json")
+                self.exibir_diretorio("navigation.json", nova_janela=self.tree.master.master)
             else:
                 messagebox.showerror("Erro", "Erro ao executar o programa get_dir_tree.")
         except FileNotFoundError:
