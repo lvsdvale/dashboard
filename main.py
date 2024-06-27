@@ -373,6 +373,22 @@ class GerenciadorTarefas:
         for i in range(len(labels)):
             ttk.Label(detalhes_frame, text=labels[i]).grid(row=i, column=0, padx=5, pady=5, sticky="w")
             ttk.Label(detalhes_frame, text=valores[i]).grid(row=i, column=1, padx=5, pady=5, sticky="w")
+
+        # Roda o programa em C para gerar o JSON
+        pid = int(valores[0])
+        subprocess.run(["sudo","./api/get_io_stats", str(pid)])
+
+        # Lê o JSON gerado
+        with open(f"pid_information.json", "r") as f:
+            json_data = json.load(f)
+
+        # Exibe os FDs
+        fds_frame = ttk.Frame(detalhes_window)
+        fds_frame.pack(padx=20, pady=10)
+        ttk.Label(fds_frame, text="FDs:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        for fd in json_data["process"]["fds"]:
+            ttk.Label(fds_frame, text=f"FD {fd['fd']}: {fd['path']}").grid(row=len(fds_frame.winfo_children()), column=0, padx=5, pady=5, sticky="w")
+
     def exibir_detalhes_memoria(self, event):
         item = self.tabela_memoria.selection()[0]
         nome_processo = self.tabela_memoria.item(item, "text")
